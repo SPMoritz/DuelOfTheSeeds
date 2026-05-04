@@ -146,14 +146,19 @@ export function generateLevel(seedNum) {
     }
   }
 
-  // --- 7. Build bot waypoints (follow main path) ---
-  const allPlatsSorted = [...platforms].sort((a, b) => b.row - a.row); // bottom to top
-  const botPath = allPlatsSorted.map((p) => ({
-    x: (p.col + p.width / 2) * TILE,
-    y: (p.row - 1) * TILE,
+  // --- 7. Build bot waypoints (follow main path only) ---
+  // Sort main platforms bottom-to-top so bot climbs in order
+  const mainPlatsSorted = [...platforms].filter(p => p.isMain).sort((a, b) => b.row - a.row);
+  const botPath = mainPlatsSorted.map((p) => ({
+    x: (p.col + p.width / 2) * TILE + TILE / 2,
+    y: p.row * TILE - 2, // stand ON the platform surface
   }));
 
-  // Add finish waypoint
+  // Add finish platform, then finish tile waypoints
+  botPath.push({
+    x: Math.floor(COLS / 2) * TILE + TILE / 2,
+    y: finishRow * TILE - 2,
+  });
   botPath.push({
     x: finishCol * TILE + TILE / 2,
     y: (finishRow - 1) * TILE,

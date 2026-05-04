@@ -260,8 +260,10 @@ export class GameScene extends Phaser.Scene {
     setupBtn(this.btnDash, 'dash');
     setupBtn(this.btnJump, 'jump');
 
-    // Multi-touch support
-    this.input.addPointer(2);
+    // Multi-touch support (only add once globally)
+    if (this.input.manager.pointers.length < 4) {
+      this.input.addPointer(2);
+    }
   }
 
   // ===================== HUD =====================
@@ -514,34 +516,35 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Jump when target is above — always full jump power
-    if (dy < -TILE * 0.3 && botOnFloor) {
+    if (botOnFloor && dy < -6) {
       bot.body.setVelocityY(PLAYER_JUMP);
     }
 
-    // Also jump if on floor and horizontally close but can't reach (stuck on ledge)
-    if (botOnFloor && Math.abs(dx) < TILE * 2 && dy < -4) {
-      bot.body.setVelocityY(PLAYER_JUMP);
-    }
-
-    // Reached waypoint?
-    if (Math.abs(dx) < 14 && Math.abs(dy) < 18) {
+    // Reached waypoint? (generous horizontal, tight vertical for platforming)
+    const reachedH = Math.abs(dx) < TILE;
+    const reachedV = Math.abs(dy) < TILE * 1.5;
+    if (reachedH && reachedV) {
       this.botWaypointIdx++;
       this._botStuckTimer = 0;
     }
 
-    // Bot stuck detection — skip waypoint faster
+    // Bot stuck detection
     if (!this._botStuckTimer) this._botStuckTimer = 0;
     if (!this._botLastPos) this._botLastPos = { x: bot.x, y: bot.y };
 
     const moved = Math.abs(bot.x - this._botLastPos.x) + Math.abs(bot.y - this._botLastPos.y);
     if (moved < 2) {
       this._botStuckTimer += delta;
-      // If stuck, try jumping
-      if (this._botStuckTimer > 500 && botOnFloor) {
+      // If stuck and on floor, try jumping toward waypoint
+      if (this._botStuckTimer > 400 && botOnFloor) {
         bot.body.setVelocityY(PLAYER_JUMP);
+        // Also nudge horizontally
+        if (Math.abs(dx) > 2) {
+          bot.body.setVelocityX(dx > 0 ? speed : -speed);
+        }
       }
       // Skip waypoint if stuck too long
-      if (this._botStuckTimer > 1500) {
+      if (this._botStuckTimer > 1200) {
         this.botWaypointIdx++;
         this._botStuckTimer = 0;
       }
@@ -644,8 +647,9 @@ export class GameScene extends Phaser.Scene {
     const entry = { name: this.playerName, time: finalTime, date: Date.now() };
     const scores = Storage.saveHighscore(this.seed, entry);
 
-    // Save ghost if best
-    const ghostData = { time: finalTime, frames: this.ghostRecording };
+    // Save ghost if best (copy frames to avoid reference issues)
+    const ghostFrames = this.ghostRecording.map(f => ({ x: Math.round(f.x), y: Math.round(f.y) }));
+    const ghostData = { time: finalTime, frames: ghostFrames };
     const isBestGhost = Storage.saveGhost(this.seed, ghostData);
 
     // Add to recent seeds
@@ -715,5 +719,27 @@ export class GameScene extends Phaser.Scene {
     } else {
       this.scene.pause();
     }
+  }
+
+  // ===================== CLEANUP =====================
+
+  shutdown() {
+    // Properly clean up to prevent issues on scene restart
+    this.existingGhost = null;
+    this.ghostRecording = [];
+    if (this.ghostSprite) {
+      this.ghostSprite.destroy();
+      this.ghostSprite = null;
+    }
+    if (this.jumpEmitter) {
+      this.jumpEmitter.destroy();
+      this.jumpEmitter = null;
+    }
+    if (this.dashEmitter) {
+      this.dashEmitter.destroy();
+      this.dashEmitter = null;
+    }
+    // Remove keyboard listeners to prevent leaks
+    this.input.keyboard.removeAllListeners();
   }
 }
