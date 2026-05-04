@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { TILE, COLORS } from '../constants.js';
+import { registerSounds } from '../utils/SoundGen.js';
 
 /**
  * BootScene: generates all pixel art textures programmatically,
@@ -12,7 +13,12 @@ export class BootScene extends Phaser.Scene {
 
   create() {
     this.generateTextures();
-    this.scene.start('Menu');
+
+    // Generate and load sounds, then go to menu
+    this.load.once('complete', () => {
+      this.scene.start('Menu');
+    });
+    registerSounds(this);
   }
 
   generateTextures() {

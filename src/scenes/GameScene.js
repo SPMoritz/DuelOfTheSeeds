@@ -145,6 +145,9 @@ export class GameScene extends Phaser.Scene {
     // --- Countdown ---
     this.startCountdown();
 
+    // --- Scene cleanup on shutdown (MUST register as event!) ---
+    this.events.once('shutdown', this.cleanup, this);
+
     // --- Fall death ---
     this.deathY = (LEVEL_ROWS + 5) * TILE;
 
@@ -343,6 +346,7 @@ export class GameScene extends Phaser.Scene {
     this.bot.setVelocity(0, 0);
     this.bot.body.setAllowGravity(false);
 
+    this.safePlay('sfx_countdown');
     this.time.addEvent({
       delay: 800,
       repeat: 3,
@@ -350,8 +354,10 @@ export class GameScene extends Phaser.Scene {
         this.countdownValue--;
         if (this.countdownValue > 0) {
           this.countdownText.setText(String(this.countdownValue));
+          this.safePlay('sfx_countdown');
         } else if (this.countdownValue === 0) {
           this.countdownText.setText('GO!');
+          this.safePlay('sfx_go');
         } else {
           this.countdownText.setText('');
           this.gameState = 'playing';
@@ -427,6 +433,7 @@ export class GameScene extends Phaser.Scene {
       this.dashTimer = PLAYER_DASH_DURATION;
       this.dashCooldown = PLAYER_DASH_COOLDOWN;
       this.emitDashParticles();
+      this.safePlay('sfx_dash');
     }
 
     // --- Horizontal movement ---
@@ -435,9 +442,11 @@ export class GameScene extends Phaser.Scene {
     } else if (left) {
       body.setVelocityX(-PLAYER_SPEED);
       this.facingRight = false;
+      if (onFloor) this.playWalkSound();
     } else if (right) {
       body.setVelocityX(PLAYER_SPEED);
       this.facingRight = true;
+      if (onFloor) this.playWalkSound();
     } else {
       body.setVelocityX(0);
     }
@@ -458,6 +467,7 @@ export class GameScene extends Phaser.Scene {
       this.coyoteTimer = 0;
       this.jumpBufferTimer = 0;
       this.emitJumpParticles();
+      this.safePlay('sfx_jump');
     }
 
     // Reset touch jump (one-shot)
@@ -595,6 +605,7 @@ export class GameScene extends Phaser.Scene {
     // Flash and respawn
     this.isAlive = false;
     this.cameras.main.shake(100, 0.01);
+    this.safePlay('sfx_hit');
 
     this.player.setTint(0xff0000);
     this.time.delayedCall(300, () => {
@@ -638,6 +649,7 @@ export class GameScene extends Phaser.Scene {
     if (this.playerFinished) return;
     this.playerFinished = true;
     this.gameState = 'finished';
+    this.safePlay('sfx_finish');
 
     const finalTime = this.runTime;
     this.player.setVelocity(0, 0);
@@ -710,6 +722,29 @@ export class GameScene extends Phaser.Scene {
     this.dashEmitter.emitParticleAt(this.player.x, this.player.y, 8);
   }
 
+  // ===================== SOUND =====================
+
+  safePlay(key) {
+    try {
+      if (this.sound && this.cache.audio.exists(key)) {
+        this.sound.play(key);
+      }
+    } catch (e) {
+      // Ignore sound errors (autoplay policy, etc.)
+    }
+  }
+
+  // ===================== WALK SOUND =====================
+
+  playWalkSound() {
+    if (!this._walkSoundTimer) this._walkSoundTimer = 0;
+    const now = this.time.now;
+    if (now - this._walkSoundTimer > 200) {
+      this._walkSoundTimer = now;
+      this.safePlay('sfx_walk');
+    }
+  }
+
   // ===================== PAUSE =====================
 
   togglePause() {
@@ -723,8 +758,8 @@ export class GameScene extends Phaser.Scene {
 
   // ===================== CLEANUP =====================
 
-  shutdown() {
-    // Properly clean up to prevent issues on scene restart
+  cleanup() {
+    // Called via this.events.once('shutdown') — prevents leaks on scene restart
     this.existingGhost = null;
     this.ghostRecording = [];
     if (this.ghostSprite) {
@@ -739,7 +774,9 @@ export class GameScene extends Phaser.Scene {
       this.dashEmitter.destroy();
       this.dashEmitter = null;
     }
-    // Remove keyboard listeners to prevent leaks
-    this.input.keyboard.removeAllListeners();
+    // Remove keyboard listeners to prevent leaks across scene restarts
+    if (this.input && this.input.keyboard) {
+      this.input.keyboard.removeAllListeners();
+    }
   }
 }
