@@ -21,7 +21,19 @@ export class GameScene extends Phaser.Scene {
     this.playerName = data.playerName || 'Spieler';
     this.botDiffKey = data.botDifficulty || 'NORMAL';
     this.botDiffSettings = BOT_DIFFICULTY[this.botDiffKey];
-    this.existingGhost = Storage.getBestGhost(this.seed);
+
+    // Load and validate ghost data
+    this.existingGhost = null;
+    try {
+      const raw = Storage.getBestGhost(this.seed);
+      if (raw && Array.isArray(raw.frames) && raw.frames.length > 5 &&
+          typeof raw.time === 'number' && raw.time > 0 &&
+          typeof raw.frames[0].x === 'number' && typeof raw.frames[0].y === 'number') {
+        this.existingGhost = raw;
+      }
+    } catch (e) {
+      console.warn('Ghost data invalid, ignoring:', e);
+    }
   }
 
   create() {
@@ -206,7 +218,9 @@ export class GameScene extends Phaser.Scene {
   // ===================== ONE-WAY PLATFORMS =====================
 
   oneWayCheck(entity, platform) {
-    // One-way platform: only collide if entity's previous bottom was above platform top
+    // Jumping upward → never collide, let entity pass through from below
+    if (entity.body.velocity.y < 0) return false;
+    // Falling or standing → only collide if entity was above platform last frame
     const prevBottom = entity.body.prev.y + entity.body.height;
     return prevBottom <= platform.body.top + 8;
   }
@@ -360,7 +374,11 @@ export class GameScene extends Phaser.Scene {
 
       this.updatePlayer(delta);
       this.updateBot(delta);
-      this.updateGhostPlayback();
+      try { this.updateGhostPlayback(); } catch (e) {
+        console.warn('Ghost playback error, disabling:', e);
+        this.existingGhost = null;
+        if (this.ghostSprite) this.ghostSprite.setVisible(false);
+      }
       this.recordGhost();
       this.updateRespawnInvincibility(delta);
       this.checkFallDeath();
@@ -472,7 +490,7 @@ export class GameScene extends Phaser.Scene {
     if (this.botFinished) return;
 
     const path = this.levelData.botPath;
-    if (this.botWaypointIdx >= path.length) {
+    if (!path || this.botWaypointIdx >= path.length) {
       this.botFinished = true;
       this.botFinishTime = this.runTime;
       this.bot.setVelocity(0, 0);
@@ -485,33 +503,45 @@ export class GameScene extends Phaser.Scene {
     const dx = target.x - bot.x;
     const dy = target.y - bot.y;
     const speed = PLAYER_SPEED * this.botDiffSettings.speedMult;
+    const botOnFloor = bot.body.blocked.down || bot.body.touching.down;
 
-    // Horizontal movement
-    if (Math.abs(dx) > 6) {
+    // Horizontal movement toward waypoint
+    if (Math.abs(dx) > 4) {
       bot.body.setVelocityX(dx > 0 ? speed : -speed);
       bot.setFlipX(dx < 0);
     } else {
       bot.body.setVelocityX(0);
     }
 
-    // Jump when target is above — always use full jump power so bot can reach platforms
-    const botOnFloor = bot.body.blocked.down || bot.body.touching.down;
-    if (dy < -TILE * 0.5 && botOnFloor) {
+    // Jump when target is above — always full jump power
+    if (dy < -TILE * 0.3 && botOnFloor) {
+      bot.body.setVelocityY(PLAYER_JUMP);
+    }
+
+    // Also jump if on floor and horizontally close but can't reach (stuck on ledge)
+    if (botOnFloor && Math.abs(dx) < TILE * 2 && dy < -4) {
       bot.body.setVelocityY(PLAYER_JUMP);
     }
 
     // Reached waypoint?
-    if (Math.abs(dx) < 12 && Math.abs(dy) < 16) {
+    if (Math.abs(dx) < 14 && Math.abs(dy) < 18) {
       this.botWaypointIdx++;
+      this._botStuckTimer = 0;
     }
 
-    // Bot stuck detection — skip waypoint if stuck too long
+    // Bot stuck detection — skip waypoint faster
     if (!this._botStuckTimer) this._botStuckTimer = 0;
     if (!this._botLastPos) this._botLastPos = { x: bot.x, y: bot.y };
 
-    if (Math.abs(bot.x - this._botLastPos.x) < 1 && Math.abs(bot.y - this._botLastPos.y) < 1) {
+    const moved = Math.abs(bot.x - this._botLastPos.x) + Math.abs(bot.y - this._botLastPos.y);
+    if (moved < 2) {
       this._botStuckTimer += delta;
-      if (this._botStuckTimer > 2000) {
+      // If stuck, try jumping
+      if (this._botStuckTimer > 500 && botOnFloor) {
+        bot.body.setVelocityY(PLAYER_JUMP);
+      }
+      // Skip waypoint if stuck too long
+      if (this._botStuckTimer > 1500) {
         this.botWaypointIdx++;
         this._botStuckTimer = 0;
       }

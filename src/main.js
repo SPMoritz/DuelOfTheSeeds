@@ -32,6 +32,7 @@ const config = {
 };
 
 const game = new Phaser.Game(config);
+window.__PHASER_GAME__ = game;
 
 // PWA Service Worker registration
 if ('serviceWorker' in navigator) {
