@@ -110,8 +110,13 @@ export class ResultScene extends Phaser.Scene {
     // --- Actions ---
     const actY = compY + topScores.length * 14 + 20;
 
-    // Retry
-    const retryBtn = this.createButton(cx, actY, '↻ NOCHMAL', '#44cc88');
+    // Primary: Retry same seed (big button)
+    const retryBtn = this.add.text(cx, actY, '↻  NOCHMAL', {
+      fontFamily: 'monospace', fontSize: '12px', color: '#ffffff',
+      stroke: '#000', strokeThickness: 3,
+      backgroundColor: '#338833',
+      padding: { x: 16, y: 6 },
+    }).setOrigin(0.5).setInteractive();
     retryBtn.on('pointerdown', () => {
       this.scene.start('Game', {
         seed: this.seed,
@@ -121,8 +126,22 @@ export class ResultScene extends Phaser.Scene {
       });
     });
 
+    // Pass-and-play: next player same seed
+    const nextPlayerBtn = this.createButton(cx, actY + 26, '👤 NÄCHSTER SPIELER (gleicher Seed)', '#44aacc');
+    nextPlayerBtn.on('pointerdown', () => {
+      const name = prompt('Name des nächsten Spielers:');
+      if (name && name.trim()) {
+        this.scene.start('Game', {
+          seed: this.seed,
+          seedNum: this.seedNum,
+          playerName: name.trim(),
+          botDifficulty: this.botDifficulty,
+        });
+      }
+    });
+
     // New seed
-    const newBtn = this.createButton(cx, actY + 22, '⟳ NEUER SEED', '#6688aa');
+    const newBtn = this.createButton(cx, actY + 46, '⟳ NEUER SEED', '#6688aa');
     newBtn.on('pointerdown', () => {
       this.scene.start('Menu');
     });
@@ -130,26 +149,25 @@ export class ResultScene extends Phaser.Scene {
     // Favorite
     const favSeeds = Storage.getFavoriteSeeds();
     const isFav = favSeeds.includes(this.seed);
-    const favBtn = this.createButton(cx, actY + 44, isFav ? '★ FAVORIT (gespeichert)' : '☆ ALS FAVORIT SPEICHERN', '#f1c40f');
+    const favBtn = this.createButton(cx, actY + 66, isFav ? '★ FAVORIT' : '☆ FAVORIT SPEICHERN', '#f1c40f');
     favBtn.on('pointerdown', () => {
       if (!isFav) {
         Storage.saveFavoriteSeed(this.seed);
-        favBtn.setText('★ FAVORIT (gespeichert)');
+        favBtn.setText('★ FAVORIT');
       } else {
         Storage.removeFavoriteSeed(this.seed);
-        favBtn.setText('☆ ALS FAVORIT SPEICHERN');
+        favBtn.setText('☆ FAVORIT SPEICHERN');
       }
     });
 
-    // Share text
-    const shareBtn = this.createButton(cx, actY + 66, '↗ TEILEN', '#aa66cc');
+    // Share + Menu on same line
+    const shareBtn = this.createButton(cx - 40, actY + 86, '↗ TEILEN', '#aa66cc');
     shareBtn.on('pointerdown', () => this.shareResult());
 
-    // Back to menu
-    const menuBtn = this.createButton(cx, actY + 88, '← MENÜ', '#888888');
+    const menuBtn = this.createButton(cx + 40, actY + 86, '← MENÜ', '#888888');
     menuBtn.on('pointerdown', () => this.scene.start('Menu'));
 
-    // Keyboard
+    // Keyboard: Enter = retry same seed
     this.input.keyboard.on('keydown-ENTER', () => {
       this.scene.start('Game', {
         seed: this.seed,

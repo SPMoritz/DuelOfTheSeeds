@@ -206,9 +206,9 @@ export class GameScene extends Phaser.Scene {
   // ===================== ONE-WAY PLATFORMS =====================
 
   oneWayCheck(entity, platform) {
-    // Only collide if entity is falling and feet are at or above platform top
-    return entity.body.velocity.y >= 0 &&
-      entity.body.bottom <= platform.body.top + 6;
+    // One-way platform: only collide if entity's previous bottom was above platform top
+    const prevBottom = entity.body.prev.y + entity.body.height;
+    return prevBottom <= platform.body.top + 8;
   }
 
   // ===================== TOUCH CONTROLS =====================
@@ -494,10 +494,10 @@ export class GameScene extends Phaser.Scene {
       bot.body.setVelocityX(0);
     }
 
-    // Jump when target is above
+    // Jump when target is above — always use full jump power so bot can reach platforms
     const botOnFloor = bot.body.blocked.down || bot.body.touching.down;
     if (dy < -TILE * 0.5 && botOnFloor) {
-      bot.body.setVelocityY(PLAYER_JUMP * this.botDiffSettings.speedMult);
+      bot.body.setVelocityY(PLAYER_JUMP);
     }
 
     // Reached waypoint?
@@ -537,16 +537,18 @@ export class GameScene extends Phaser.Scene {
     if (!this.ghostSprite || !this.existingGhost) return;
 
     const frames = this.existingGhost.frames;
-    if (this.ghostPlaybackIdx >= frames.length) {
+    if (!frames || frames.length === 0) {
       this.ghostSprite.setVisible(false);
       return;
     }
 
-    // Find the frame matching current time
     const targetFrame = Math.floor(this.frameCount / 3);
     if (targetFrame < frames.length) {
       const gf = frames[targetFrame];
-      this.ghostSprite.setPosition(gf.x, gf.y);
+      if (gf && typeof gf.x === 'number' && typeof gf.y === 'number') {
+        this.ghostSprite.setPosition(gf.x, gf.y);
+        this.ghostSprite.setVisible(true);
+      }
     } else {
       this.ghostSprite.setVisible(false);
     }
